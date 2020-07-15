@@ -1,14 +1,9 @@
 ﻿using System;
-using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
-using System.Linq;
 using System.Net.Http;
-using System.Net.Http.Formatting;
-using System.Reflection;
-using System.Text;
-using System.Web;
+using System.Net.Http.Headers;
 using System.Web.Mvc;
-using System.Web.Script.Serialization;
 
 namespace QRCodeScanner.Controllers
 {
@@ -35,39 +30,62 @@ namespace QRCodeScanner.Controllers
 
         public ActionResult QRCodeScanner()
         {
-            // TODO : I have generated QR code and stored image inside project directory(D:\My Projects\QRCodeScanner\QRCodeScanner\Content\images\QRCodeImage.png)
-            // Also converted file path into url encoded format below but unfortunately it given 400-Bad Request error always. 
-            
-            // D%3A%5CMy%20Projects%5CQRCodeScanner%5CQRCodeScanner%5CContent%5Cimages%5CQRCodeImage.png
-            
-            // ViewData["QRCodeImageText"] = ScanQRCode("D%3A%5CMy%20Projects%5CQRCodeScanner%5CQRCodeScanner%5CContent%5Cimages%5CQRCodeImage.png"); // Not Working
+            var generatedQRCodeImage = GenerateQRCode("Example");
 
-            // I tried using same web url for my new QR code and its working as expected.
-            ViewData["QRCodeImageText"] = ("http://api.qrserver.com/v1/create-qr-code/?data=This-is-QR-Code-Svanner-Sample-Application"); // Working
+            ViewData["QRCodeImageText"] = ScanQRCode(generatedQRCodeImage);
 
             return View();
         }
 
         [NonAction]
-        public string ScanQRCode(string filePath)
+        public string ScanQRCode(Stream qrCodeImage)
+        {
+            using (var client = new HttpClient())
+            {
+                client.BaseAddress = new Uri("http://api.qrserver.com/v1/");
+
+                MultipartFormDataContent content = new MultipartFormDataContent();
+
+                //content.Add(new ByteArrayContent(qrCodeImage, 0, qrCodeImage.Length), "file", "qrCodeImage.jpg");
+
+                var imageContent = new StreamContent(qrCodeImage);
+
+                content.Add(imageContent, "file");
+
+                var responseTask = client.PostAsync("read-qr-code", content);
+                responseTask.Wait();
+
+                string QRCodeJson = "Bad Request";
+                if (responseTask.Result.IsSuccessStatusCode)
+                {
+                    QRCodeJson = responseTask.Result.Content.ReadAsStringAsync().Result;
+                }
+
+                return QRCodeJson;
+            }
+        }
+
+
+        [NonAction]
+        public Stream GenerateQRCode(string qrCodeText)
         {
             using (var client = new HttpClient())
             {
                 client.BaseAddress = new Uri("http://api.qrserver.com/v1/");
 
                 //Http GET
-                var responseTask = client.GetAsync("read-qr-code/?fileurl=" + filePath);
+                var responseTask = client.GetAsync("create-qr-code/?size=150x150&data=" + qrCodeText);
                 responseTask.Wait();
 
                 var result = responseTask.Result;
 
-                string QRCodeJson = "Bad Request";
+                Stream generatedImage = null;
                 if (result.IsSuccessStatusCode)
                 {
-                    QRCodeJson = result.Content.ReadAsStringAsync().Result;
+                    generatedImage = result.Content.ReadAsStreamAsync().Result;
                 }
 
-                return QRCodeJson;
+                return generatedImage;
             }
         }
     }
